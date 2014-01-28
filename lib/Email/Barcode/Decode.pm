@@ -104,6 +104,10 @@ sub get_symbols {
         my $magick = Image::Magick->new();
         my $error = $magick->Read($file);
         die $error if $error;
+        my ($width,$height) = $magick->Get(qw(columns rows));
+        $magick->Resize(height=>1500,width=>int($width*(1500/$height)))
+            if $height > 1500;
+        #$magick->Write('/tmp/testing.jpg');
         my $raw = $magick->ImageToBlob(magick => 'GRAY', depth => 8);
 
         my $image = Barcode::ZBar::Image->new();
