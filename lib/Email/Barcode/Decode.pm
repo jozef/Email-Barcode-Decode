@@ -104,6 +104,8 @@ sub get_symbols {
         my $magick = Image::Magick->new();
         my $error = $magick->Read($file);
         die $error if $error;
+        $magick->Normalize();
+        $magick->Contrast(sharpen=>1);
         my ($width,$height) = $magick->Get(qw(columns rows));
         $magick->Resize(height=>1500,width=>int($width*(1500/$height)))
             if $height > 1500;
