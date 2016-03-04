@@ -1,5 +1,9 @@
 Revision history for Email-Barcode-Decode
 
+0.02    4 Feb 2016
+    - scaling down images to 1500px, bigger images may not work well with Barcode::ZBar::Image
+    - normalize and sharpen contrast before decoding
+
 0.01    4 Jan 2013
         First version, released on an unsuspecting world.
 

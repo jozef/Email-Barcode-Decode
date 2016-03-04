@@ -2,6 +2,6 @@ Build.PL
 Changes
 lib/Email/Barcode/Decode.pm
 MANIFEST			This list of files
-README
-META.yml
 META.json
+META.yml
+README

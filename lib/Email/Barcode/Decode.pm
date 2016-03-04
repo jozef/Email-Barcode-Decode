@@ -14,7 +14,7 @@ use Cwd 'getcwd';
 use Capture::Tiny 'capture';
 use File::Which qw(which);
 
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 use base 'Class::Accessor::Fast';
 
