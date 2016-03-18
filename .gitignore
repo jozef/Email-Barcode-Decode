@@ -13,6 +13,3 @@
 /cover_db
 /tmp/*
 /Email-Barcode-Decode-*
-
-# until confidential emails and data are moved away
-t/
