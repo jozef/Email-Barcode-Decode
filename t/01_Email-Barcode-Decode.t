@@ -4,7 +4,7 @@ use strict;
 use warnings;
 
 #use Test::More 'no_plan';
-use Test::More tests => 8;
+use Test::More tests => 11;
 
 use FindBin qw($Bin);
 use lib "$Bin/lib";
@@ -21,7 +21,7 @@ EMAIL_WITH_IMAGE: {
 
     my $ebd = Email::Barcode::Decode->new(email => $msg01);
     my @attached = @{$ebd->attached_files};
-    is(scalar(@attached), 1, 'one attachment');
+    is(scalar(@attached), 1, 'one attachment msg01.eml');
 
     my @symbols = $ebd->get_symbols;
     is(scalar(@symbols), 1, 'one barcode');
@@ -29,6 +29,22 @@ EMAIL_WITH_IMAGE: {
         filename => 'barcode01.jpg',
         type     => 'QR-Code',
         data     => 'eusa:mpsexp:9',
+    }, 'decoded data');
+}
+
+EMAIL_WITH_IMAGE2: {
+    my $msg03 = file($Bin,'tdata','msg03.eml')->slurp;
+
+    my $ebd = Email::Barcode::Decode->new(email => $msg03);
+    my @attached = @{$ebd->attached_files};
+    is(scalar(@attached), 1, 'one attachment msg03.eml');
+
+    my @symbols = $ebd->get_symbols;
+    is(scalar(@symbols), 1, 'one barcode');
+    is_deeply($symbols[0],{
+        filename => 'DPD-IMG_0013.jpg',
+        type     => 'CODE-128',
+        data     => 'eusa:mpsexp:939',
     }, 'decoded data');
 }
 

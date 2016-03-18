@@ -34,5 +34,4 @@
 ^Email-Barcode-Decode-
 
 # until cleaned-up
-^t/
 ^MYMETA\.json$

@@ -14,7 +14,7 @@ use Cwd 'getcwd';
 use Capture::Tiny 'capture';
 use File::Which qw(which);
 
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 
 use base 'Class::Accessor::Fast';
 
@@ -24,6 +24,21 @@ __PACKAGE__->mk_accessors(qw{
     attached_files
     _tmpdir
 });
+
+our @enhancers = (
+    sub {
+        my ($magick) = @_;
+        $magick->Normalize();
+        $magick->Contrast(sharpen => 1);
+    },
+    sub {
+        my ($magick) = @_;
+        $magick->Set(dither => 'False');
+        $magick->Quantize(colors     => 2);
+        $magick->Quantize(colorspace => 'gray');
+        $magick->ContrastStretch(levels => 0);
+    },
+);
 
 sub new {
     my ($class, %opts) = @_;
@@ -101,36 +116,50 @@ sub get_symbols {
 
     my @symbols;
     foreach my $file (@{$self->attached_files}) {
-        my $magick = Image::Magick->new();
-        my $error = $magick->Read($file);
-        die $error if $error;
-        $magick->Normalize();
-        $magick->Contrast(sharpen=>1);
-        my ($width,$height) = $magick->Get(qw(columns rows));
-        $magick->Resize(height=>1500,width=>int($width*(1500/$height)))
-            if $height > 1500;
-        #$magick->Write('/tmp/testing.jpg');
-        my $raw = $magick->ImageToBlob(magick => 'GRAY', depth => 8);
+        my %unique_data;
+        foreach my $enhancer (@enhancers) {
+            my @new_symbols = _get_symbols_from_file($scanner, $file, $enhancer,);
 
-        my $image = Barcode::ZBar::Image->new();
-        $image->set_format('Y800');
-        $image->set_size($magick->Get(qw(columns rows)));
-        $image->set_data($raw);
-
-        $scanner->scan_image($image);
-        push(
-            @symbols, (
-                map { +{
-                    filename => $file->basename,
-                    type     => $_->get_type,
-                    data     => $_->get_data,
-                }}
-                $image->get_symbols
-            ),
-        );
+            push(
+                @symbols, (
+                    map { +{
+                        filename => $file->basename,
+                        type     => $_->get_type,
+                        data     => $_->get_data,
+                    }}
+                    grep { not($unique_data{$_->get_data}++) }   # only new/unique
+                    @new_symbols,
+                ),
+            );
+        }
     }
 
     return @symbols;
+}
+
+sub _get_symbols_from_file {
+    my ($scanner, $file, $enhance_code) = @_;
+
+    my $magick = Image::Magick->new();
+    my $error = $magick->Read($file);
+    die $error if $error;
+
+    $enhance_code->($magick);
+
+    my ($width,$height) = $magick->Get(qw(columns rows));
+    $magick->Resize(height=>1500,width=>int($width*(1500/$height)))
+        if $height > 1500;
+    #$magick->Write('/tmp/testing.jpg');
+    my $raw = $magick->ImageToBlob(magick => 'GRAY', depth => 8);
+
+    my $image = Barcode::ZBar::Image->new();
+    $image->set_format('Y800');
+    $image->set_size($magick->Get(qw(columns rows)));
+    $image->set_data($raw);
+
+    $scanner->scan_image($image);
+
+    return $image->get_symbols;
 }
 
 sub email_name {
