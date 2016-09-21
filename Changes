@@ -1,5 +1,10 @@
 Revision history for Email-Barcode-Decode
 
+0.04   21 September 2016
+    - fixes to still work after debian/jessie
+      libmagickwand-6.q16-2 libmagickcore-6.q16-2 imagemagick-common packages
+      security update to 8:6.8.9.9-5+deb8u4
+
 0.03   18 March 2016
     - improved B/W enhacing of image to be decoded
 

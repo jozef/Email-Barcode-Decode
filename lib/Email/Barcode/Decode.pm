@@ -14,7 +14,7 @@ use Cwd 'getcwd';
 use Capture::Tiny 'capture';
 use File::Which qw(which);
 
-our $VERSION = '0.03';
+our $VERSION = '0.04';
 
 use base 'Class::Accessor::Fast';
 
@@ -30,6 +30,18 @@ our @enhancers = (
         my ($magick) = @_;
         $magick->Normalize();
         $magick->Contrast(sharpen => 1);
+
+        my ($width,$height) = $magick->Get(qw(columns rows));
+        $magick->Resize(height=>1500,width=>int($width*(1500/$height)))
+            if $height > 1500;
+
+        my $raw = $magick->ImageToBlob(
+            magick            => 'YUV',
+            'sampling-factor' => '4:2:2',
+            interlace         => 'Plane'
+        );
+
+        return ($raw,'Y800');
     },
     sub {
         my ($magick) = @_;
@@ -37,6 +49,14 @@ our @enhancers = (
         $magick->Quantize(colors     => 2);
         $magick->Quantize(colorspace => 'gray');
         $magick->ContrastStretch(levels => 0);
+
+        my ($width,$height) = $magick->Get(qw(columns rows));
+        $magick->Resize(height=>1500,width=>int($width*(1500/$height)))
+            if $height > 1500;
+
+        my $raw = $magick->ImageToBlob(magick => 'GRAY', depth => 8);
+
+        return ($raw,'Y800');
     },
 );
 
@@ -144,16 +164,10 @@ sub _get_symbols_from_file {
     my $error = $magick->Read($file);
     die $error if $error;
 
-    $enhance_code->($magick);
-
-    my ($width,$height) = $magick->Get(qw(columns rows));
-    $magick->Resize(height=>1500,width=>int($width*(1500/$height)))
-        if $height > 1500;
-    #$magick->Write('/tmp/testing.jpg');
-    my $raw = $magick->ImageToBlob(magick => 'GRAY', depth => 8);
+    my ($raw, $raw_format) = $enhance_code->($magick);
 
     my $image = Barcode::ZBar::Image->new();
-    $image->set_format('Y800');
+    $image->set_format($raw_format);
     $image->set_size($magick->Get(qw(columns rows)));
     $image->set_data($raw);
 
