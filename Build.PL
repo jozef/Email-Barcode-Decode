@@ -9,15 +9,16 @@ my $builder = Module::Build->new(
     dist_version_from   => 'lib/Email/Barcode/Decode.pm',
     requires => {
         'Email::MIME'           => 0,
+        'Email::Address::XS'    => 0,
         'File::Temp'            => 0,
         'Path::Class'           => '0.33',
         'Class::Accessor::Fast' => 0,
         'Carp'                  => 0,
-        'File::Find::Rule'      => 0,
         'Imager'                => 0,
         'Barcode::ZBar'         => 0,
         'Capture::Tiny'         => 0,
         'File::Which'           => 0,
+        'Text::Unidecode'       => 0,
     },
     build_requires => {
         'Test::More'      => 0,

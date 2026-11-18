@@ -9,10 +9,36 @@ Revision history for Email-Barcode-Decode
       they now get an Imager object and return ($raw, 'Y800', $width, $height)
     - PDF pages are rendered with `pdftoppm -gray` (poppler-utils) instead of
       Ghostscript: lossless grayscale instead of JPEG, PDF-only parser
-      instead of a PostScript interpreter
+      instead of a PostScript interpreter; the long side of each page is
+      rendered at $MAX_HEIGHT pixels (was 150 dpi), so a small PDF with
+      huge pages cannot fill the disk
     - attached_files of PDF pages are now named <name>-pdf-page-N.pgm
       (was <name>-pdf-pageN.jpg); page numbers are zero-padded, which fixes
       the page order of PDFs with 10 or more pages
+    - security: attachment filenames are reduced to their base name, and
+      each attachment is saved in its own numbered sub-directory of the
+      temporary directory; a filename such as ../../.bashrc could write
+      outside of it, and attachments with equal filenames overwrote each
+      other; control characters are removed and names are shortened to
+      200 bytes, so such names no longer make new die
+    - images with an alpha channel or 16 bits per sample no longer die with
+      "raster size mismatch"; transparent areas are scanned as white
+    - get_symbols skips attachments that Imager cannot read (text files,
+      unsupported image formats, PDFs without pdftoppm) instead of dying
+    - email_name and email_from no longer die (Email::Address was never
+      loaded); they use Email::Address::XS now and return undef when there
+      is no From header or the address is invalid (e.g. "From: <>"), without
+      warnings
+    - attachments inside nested multiparts are found
+    - warn when pdftoppm fails, e.g. on a damaged PDF, with the exit status
+      or the signal that killed it; the warning is transliterated to ASCII
+      with Text::Unidecode
+    - page limit of PDF attachments is configurable via $MAX_PDF_PAGES
+    - each attachment is read once per get_symbols call instead of once per
+      enhancer
+    - File::Find::Rule is no longer needed
+    - documentation extended: requirements, accessors, all public methods,
+      configuration variables, enhancer contract, license
 
 0.04   21 September 2016
     - fixes to still work after debian/jessie
@@ -20,7 +46,7 @@ Revision history for Email-Barcode-Decode
       security update to 8:6.8.9.9-5+deb8u4
 
 0.03   18 March 2016
-    - improved B/W enhacing of image to be decoded
+    - improved B/W enhancing of image to be decoded
 
 0.02    4 Feb 2016
     - scaling down images to 1500px, bigger images may not work well with Barcode::ZBar::Image

@@ -1,10 +1,11 @@
 NAME
-    Email::Barcode::Decode - decode barcodes out of an email
+    Email::Barcode::Decode - decode barcodes in email attachments
 
 SYNOPSIS
-        my $ebd = Email::Barcode::Decode->new(email => $msg);
-        my @symbols = $ebd->get_symbols;
-        foreach my $symbol (@symbols) {
+        use Email::Barcode::Decode;
+
+        my $ebd = Email::Barcode::Decode->new(email => $raw_email_string);
+        foreach my $symbol ($ebd->get_symbols) {
             print(
                 'decoded '  . $symbol->{type} .
                 ' symbol "' . $symbol->{data} .'"'.
@@ -14,32 +15,158 @@ SYNOPSIS
         }
 
 DESCRIPTION
-    This module can extract barcode information out of email attachments. It
-    processes all email image attachments. When "pdftoppm" (Debian package
-    "poppler-utils") is installed, it renders every page of PDF attachments
-    into a grayscale image. Images are read with Imager, converted
-    to grayscale and scanned for barcodes using Barcode::ZBar. Each image is
-    scanned twice, once in plain grayscale and once converted to black and
-    white.
+    Email::Barcode::Decode finds barcodes and QR codes in the attachments of
+    an email and returns their decoded content.
 
-PROPERTIES
-        email
-        header_obj
-        attached_files
+    The constructor saves every MIME part that has a filename to a temporary
+    directory, including parts inside nested multiparts. When "pdftoppm" is
+    installed, each page of a PDF attachment is rendered into a grayscale
+    image instead of saving the PDF itself.
+
+    "get_symbols" reads each saved file with Imager, converts it to 8-bit
+    grayscale and scans it with Barcode::ZBar. With the default
+    "@enhancers", each image is scanned twice: once in plain grayscale and
+    once converted to pure black and white. Attachments that Imager cannot
+    read, such as text files, are skipped.
+
+REQUIREMENTS
+    *   Imager with support for the image formats you expect. Imager reads
+        JPEG, PNG, GIF and TIFF only if it was built with the matching
+        libraries (Debian package "libimager-perl" includes them). Run "perl
+        -MImager -e 'print join(q{ }, Imager->read_types), "\n"'" to see the
+        formats your installation can read.
+
+    *   Optional: "pdftoppm" from Poppler (Debian package "poppler-utils")
+        to scan PDF attachments. Without it, PDF attachments are skipped.
+
+ACCESSORS
+  email
+    The raw email string passed to "new".
+
+  header_obj
+    The Email::MIME::Header object of the email.
+
+  attached_files
+    Array reference of Path::Class::File objects, one for each saved
+    attachment or rendered PDF page, in the order of the MIME parts.
+
+    Each attachment is saved as "<tmpdir>/<part number>/<file name>". The
+    file name is the attachment filename without any directory components,
+    so a malicious filename such as "../../.bashrc" cannot write outside the
+    temporary directory, and attachments with the same filename do not
+    overwrite each other. Control characters are removed, and names longer
+    than 200 bytes (UTF-8) are shortened, keeping the extension. A name that
+    is empty, "." or ".." after this becomes "attachment".
+
+    Rendered PDF pages are named after the PDF filename, with dots replaced
+    by dashes: "scan.pdf" becomes "scan-pdf-page-1.pgm",
+    "scan-pdf-page-2.pgm" and so on. Page numbers are zero-padded to equal
+    width, so sorting the names gives the page order. Each page is an 8-bit
+    grayscale image whose long side is "$MAX_HEIGHT" pixels, whatever the
+    page size in the PDF.
+
+    The temporary directory is removed when the program exits.
 
 METHODS
-  new()
-    Object constructor. Requires `email' string.
+  new
+        my $ebd = Email::Barcode::Decode->new(email => $raw_email_string);
 
-  get_symbols()
-    Returns an array of hashed with barcode information. Ex.:
+    Parses the email and saves its attachments as described in
+    "attached_files". Croaks when "email" is missing or empty.
 
-        my @symbols = ({
-            filename => 'vcard-pdf-page-2.pgm',
-            type     => 'QR-Code',
-            data     => 'http://search.cpan.org/perldoc?Email%3A%3ABarcode%3A%3ADecode',
-        });
+    When "pdftoppm" fails, for example on a damaged or password-protected
+    PDF, "new" warns with the exit status or signal and the "pdftoppm" error
+    message, and keeps any pages that were rendered:
+
+        pdftoppm failed for scan.pdf (exit 1): Syntax Error: Couldn't find trailer dictionary ...
+
+    The warning is plain ASCII: non-ASCII characters are transliterated with
+    Text::Unidecode, so "ärger.pdf" is reported as "arger.pdf".
+
+  get_symbols
+    Scans all "attached_files" and returns a list of hash references, one
+    per decoded symbol:
+
+        (
+            {
+                filename => 'vcard-pdf-page-2.pgm',
+                type     => 'QR-Code',
+                data     => 'http://search.cpan.org/perldoc?Email%3A%3ABarcode%3A%3ADecode',
+            },
+        )
+
+    "filename"
+        Base name of the scanned file in "attached_files".
+
+    "type"
+        Symbol type as reported by Barcode::ZBar, for example "QR-Code",
+        "CODE-128" or "EAN-13".
+
+    "data"
+        Decoded content of the symbol.
+
+    Symbols are returned in the order of "attached_files". Within one file,
+    the same "data" is returned only once, even when several enhancers find
+    it. The same content in different files is returned once per file.
+
+    Dies with "raster size mismatch" when an enhancer returns a raster whose
+    length is not "width * height"; see "@enhancers".
+
+  email_name
+    Returns the display name of the first "From" address, falling back to
+    the local part of the address when there is no display name. Returns
+    "undef", or an empty list in list context, when the email has no "From"
+    header or its first address is not a valid address, such as "<>".
+
+  email_from
+    Returns the first "From" address, for example "foo@example.com". Returns
+    "undef", or an empty list in list context, in the same cases as
+    "email_name".
+
+CONFIGURATION
+    These package variables control how attachments are converted and
+    scanned. Localize them around the call that reads them to limit the
+    change to your code:
+
+        local $Email::Barcode::Decode::MAX_HEIGHT = 2000;
+
+  $MAX_HEIGHT
+    Images taller than this are scaled down to this height, keeping the
+    aspect ratio, before scanning. Default: 1500 pixels, because larger
+    images may not decode well with Barcode::ZBar. PDF pages are rendered
+    with their long side at this size, which also bounds the disk space a
+    PDF can take. Read by "new" and "get_symbols".
+
+  $MAX_PDF_PAGES
+    Number of pages rendered per PDF attachment; later pages are ignored.
+    Default: 237. Read by "new".
+
+  @enhancers
+    List of code references. "get_symbols" calls each of them for every
+    image and scans each result.
+
+    Each enhancer receives the Imager object of the image and must return
+    "($raw, 'Y800', $width, $height)", where $raw is an 8-bit grayscale
+    raster of exactly "$width * $height" bytes. The enhancer must not modify
+    the Imager object in place, because all enhancers receive the same
+    object.
+
+    The default enhancers return:
+
+    1. the plain grayscale image, leaving binarization to ZBar;
+    2. the image converted to pure black and white with a fixed threshold of
+    128.
+
+    Both turn transparent areas white, as barcodes are usually dark on a
+    light or transparent background.
+
+SEE ALSO
+    Barcode::ZBar, Imager, Email::MIME, pdftoppm(1)
 
 AUTHOR
     Jozef Kutej
+
+LICENSE
+    This library is free software; you can redistribute it and/or modify it
+    under the same terms as Perl itself.
 

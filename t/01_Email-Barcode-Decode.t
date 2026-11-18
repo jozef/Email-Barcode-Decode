@@ -3,11 +3,9 @@
 use strict;
 use warnings;
 
-#use Test::More 'no_plan';
 use Test::More tests => 11;
 
 use FindBin qw($Bin);
-use lib "$Bin/lib";
 
 use Path::Class qw(file);
 use File::Which qw(which);
