@@ -15,9 +15,12 @@ SYNOPSIS
 
 DESCRIPTION
     This module can extract barcode information out of email attachments. It
-    processes all email image attachments. When Ghostscript is installed it
-    converts every page into image. Images are scanned for barcodes using
-    Barcode::ZBar.
+    processes all email image attachments. When "pdftoppm" (Debian package
+    "poppler-utils") is installed, it renders every page of PDF attachments
+    into a grayscale image. Images are read with Imager, converted
+    to grayscale and scanned for barcodes using Barcode::ZBar. Each image is
+    scanned twice, once in plain grayscale and once converted to black and
+    white.
 
 PROPERTIES
         email
@@ -32,7 +35,7 @@ METHODS
     Returns an array of hashed with barcode information. Ex.:
 
         my @symbols = ({
-            filename => 'vcard-pdf-page2.jpg',
+            filename => 'vcard-pdf-page-2.pgm',
             type     => 'QR-Code',
             data     => 'http://search.cpan.org/perldoc?Email%3A%3ABarcode%3A%3ADecode',
         });

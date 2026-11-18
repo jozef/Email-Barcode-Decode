@@ -8,13 +8,12 @@ use Email::MIME;
 use File::Temp qw(tempdir);
 use File::Find::Rule;
 use Path::Class qw(file);
-use Image::Magick;
+use Imager;
 use Barcode::ZBar;
-use Cwd 'getcwd';
 use Capture::Tiny 'capture';
 use File::Which qw(which);
 
-our $VERSION = '0.04';
+our $VERSION = '0.05';
 
 use base 'Class::Accessor::Fast';
 
@@ -25,40 +24,44 @@ __PACKAGE__->mk_accessors(qw{
     _tmpdir
 });
 
+our $MAX_HEIGHT = 1500;    # bigger images may not work well with Barcode::ZBar
+
+# enhancers get an Imager object and return ($raw, 'Y800', $width, $height)
 our @enhancers = (
+    # plain grayscale, Barcode::ZBar does its own binarization
     sub {
-        my ($magick) = @_;
-        $magick->Normalize();
-        $magick->Contrast(sharpen => 1);
-
-        my ($width,$height) = $magick->Get(qw(columns rows));
-        $magick->Resize(height=>1500,width=>int($width*(1500/$height)))
-            if $height > 1500;
-
-        my $raw = $magick->ImageToBlob(
-            magick            => 'YUV',
-            'sampling-factor' => '4:2:2',
-            interlace         => 'Plane'
-        );
-
-        return ($raw,'Y800');
+        my ($img) = @_;
+        return _y800(_gray($img));
     },
+    # hard black/white threshold
     sub {
-        my ($magick) = @_;
-        $magick->Set(dither => 'False');
-        $magick->Quantize(colors     => 2);
-        $magick->Quantize(colorspace => 'gray');
-        $magick->ContrastStretch(levels => 0);
-
-        my ($width,$height) = $magick->Get(qw(columns rows));
-        $magick->Resize(height=>1500,width=>int($width*(1500/$height)))
-            if $height > 1500;
-
-        my $raw = $magick->ImageToBlob(magick => 'GRAY', depth => 8);
-
-        return ($raw,'Y800');
+        my ($img) = @_;
+        $img = _gray($img);
+        $img->map(all => [map { $_ < 128 ? 0 : 255 } 0 .. 255]) or die $img->errstr;
+        return _y800($img);
     },
 );
+
+sub _gray {
+    my ($img) = @_;
+    my $channels = $img->getchannels;
+    my $gray =
+          $channels >= 3 ? $img->convert(preset => 'gray')
+        : $channels == 2 ? $img->convert(preset => 'noalpha')
+        :                  $img->copy;
+    die $img->errstr unless $gray;
+    if ($gray->getheight > $MAX_HEIGHT) {
+        $gray = $gray->scale(ypixels => $MAX_HEIGHT) or die $gray->errstr;
+    }
+    return $gray;
+}
+
+sub _y800 {
+    my ($img) = @_;
+    my $raw;
+    $img->write(data => \$raw, type => 'raw') or die $img->errstr;
+    return ($raw, 'Y800', $img->getwidth, $img->getheight);
+}
 
 sub new {
     my ($class, %opts) = @_;
@@ -84,28 +87,26 @@ sub new {
                 ($part->content_type =~ m{application/pdf})
                 || ($filename =~ m{\.pdf$})
             )
-            && (scalar(which("gs")))
+            && (scalar(which('pdftoppm')))
         ) {
             my $tmpdir2 = tempdir( CLEANUP => 1 );
             my $attached_pdf = file($tmpdir2, 'attached.pdf');
             $attached_pdf->spew($body);
-            
-            my $old_cwd = getcwd;
-            chdir($tmpdir2);
-            
+
+            # lossless 8-bit grayscale pages page-1.pgm, page-2.pgm, ...;
+            # numbers are zero-padded to the same width, so string sort is page order
             my ($stdout, $stderr, $exit) = capture {
-                system(qw(
-                    gs -dNOPAUSE -sDEVICE=jpeg -dFirstPage=1 -dLastPage=237
-                    -sOutputFile=page%d.jpg -dJPEGQ=100 -r150x150 -q attached.pdf
-                    -c quit
-                ));
+                system(
+                    'pdftoppm', '-gray', '-r', '150', '-l', '237',
+                    "$attached_pdf", file($tmpdir2, 'page').'',
+                );
             };
             my @files =
                 map { file($_) }
                 sort
                 File::Find::Rule
                 ->file()
-                ->name( 'page*.jpg' )
+                ->name( 'page-*.pgm' )
                 ->in( $tmpdir2 );
             my $base_name = $filename;
             $base_name =~ s/[.]/-/g;
@@ -114,8 +115,6 @@ sub new {
                 $file->copy_to($image_file);
                 push(@attached_files, $image_file);
             }
-            
-            chdir($old_cwd);
         }
         else {
             my $attached_file = file($tmpdir, $filename);
@@ -160,15 +159,20 @@ sub get_symbols {
 sub _get_symbols_from_file {
     my ($scanner, $file, $enhance_code) = @_;
 
-    my $magick = Image::Magick->new();
-    my $error = $magick->Read($file);
-    die $error if $error;
+    my $img = Imager->new(file => "$file")
+        or die 'failed to read ' . $file . ': ' . Imager->errstr . "\n";
 
-    my ($raw, $raw_format) = $enhance_code->($magick);
+    my ($raw, $raw_format, $width, $height) = $enhance_code->($img);
+
+    # Barcode::ZBar reads width*height bytes without checking the buffer
+    my $expected = $width * $height;
+    my $got      = length($raw // '');
+    die "raster size mismatch for $file: expected $expected bytes, got $got\n"
+        if !$expected || ($got != $expected);
 
     my $image = Barcode::ZBar::Image->new();
     $image->set_format($raw_format);
-    $image->set_size($magick->Get(qw(columns rows)));
+    $image->set_size($width, $height);
     $image->set_data($raw);
 
     $scanner->scan_image($image);
@@ -215,9 +219,12 @@ Email::Barcode::Decode - decode barcodes out of an email
 =head1 DESCRIPTION
 
 This module can extract barcode information out of email attachments.
-It processes all email image attachments. When Ghostscript is installed
-it converts every page into image. Images are scanned for barcodes using
-L<Barcode::ZBar>.
+It processes all email image attachments. When C<pdftoppm> (Debian package
+C<poppler-utils>) is installed, it renders every page of PDF attachments
+into a grayscale image. Images are read with L<Imager>,
+converted to grayscale and scanned for barcodes using L<Barcode::ZBar>.
+Each image is scanned twice, once in plain grayscale and once converted to
+black and white.
 
 =head1 PROPERTIES
 
@@ -236,7 +243,7 @@ Object constructor. Requires C<email> string.
 Returns an array of hashed with barcode information. Ex.:
 
     my @symbols = ({
-        filename => 'vcard-pdf-page2.jpg',
+        filename => 'vcard-pdf-page-2.pgm',
         type     => 'QR-Code',
         data     => 'http://search.cpan.org/perldoc?Email%3A%3ABarcode%3A%3ADecode',
     });

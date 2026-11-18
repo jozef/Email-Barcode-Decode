@@ -6,6 +6,8 @@ META.json
 META.yml
 README
 t/01_Email-Barcode-Decode.t
+t/02_imager.t
+t/03_pdf-pages.t
 t/tdata/msg01.eml
 t/tdata/msg02.eml
 t/tdata/msg03.eml

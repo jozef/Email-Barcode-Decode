@@ -48,7 +48,7 @@ EMAIL_WITH_IMAGE2: {
     }, 'decoded data');
 }
 
-if (which('gs')) {
+if (which('pdftoppm')) {
     EMAIL_WITH_PDF: {
         my $msg02 = file($Bin,'tdata','msg02.eml')->slurp;
 
@@ -59,7 +59,7 @@ if (which('gs')) {
         my @symbols = $ebd->get_symbols;
         is(scalar(@symbols), 2, 'two barcode');
         is_deeply($symbols[0],{
-            filename => 'vcard-pdf-page1.jpg',
+            filename => 'vcard-pdf-page-1.pgm',
             type     => 'QR-Code',
             data     => 'BEGIN:VCARD
 N:Jozef Kutej
@@ -72,13 +72,13 @@ ADR:Praterstrasse 15/3/22\\, 1020 Vienna\\, Austria
 END:VCARD',
         }, 'decoded data 1');
         is_deeply($symbols[1],{
-            filename => 'vcard-pdf-page2.jpg',
+            filename => 'vcard-pdf-page-2.pgm',
             type     => 'QR-Code',
             data     => 'http://search.cpan.org/perldoc?Email%3A%3ABarcode%3A%3ADecode',
         }, 'decoded data 2');
     }
 } else {
     SKIP: {
-        skip '- no `gs` found. Is Ghostscript installed?', 4;
+        skip '- no `pdftoppm` found. Is poppler-utils installed?', 4;
     }
 }

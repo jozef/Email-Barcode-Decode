@@ -1,5 +1,19 @@
 Revision history for Email-Barcode-Decode
 
+0.05   not released yet
+    - replaced Image::Magick with Imager; ImageMagick 6.9.11 (Debian 12)
+      returned empty YUV blobs, which made Barcode::ZBar segfault
+    - die with "raster size mismatch" instead of passing a short raster to
+      Barcode::ZBar
+    - enhancers simplified to plain grayscale and a black/white threshold;
+      they now get an Imager object and return ($raw, 'Y800', $width, $height)
+    - PDF pages are rendered with `pdftoppm -gray` (poppler-utils) instead of
+      Ghostscript: lossless grayscale instead of JPEG, PDF-only parser
+      instead of a PostScript interpreter
+    - attached_files of PDF pages are now named <name>-pdf-page-N.pgm
+      (was <name>-pdf-pageN.jpg); page numbers are zero-padded, which fixes
+      the page order of PDFs with 10 or more pages
+
 0.04   21 September 2016
     - fixes to still work after debian/jessie
       libmagickwand-6.q16-2 libmagickcore-6.q16-2 imagemagick-common packages
